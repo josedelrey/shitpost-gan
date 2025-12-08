@@ -5,9 +5,21 @@ from urllib.parse import urlparse
 import requests
 
 # ------------- CONFIG -------------
-SUBREDDIT = "Cursed_Images"
-OUTPUT_DIR = "reddit_cursed_images"
-MAX_POSTS = 1000
+SUBREDDITS = [
+    "blursedimages",
+    "cursedimages",
+    "Cursed_Images",
+    "Cursed",
+    "hmmm",
+    "oddlyterrifying",
+]
+
+OUTPUT_ROOT_DIR = "reddit_cursed_images"
+
+# If you set this to None, there is no max per subreddit (loop until no more posts).
+# If you set it to an int, it will stop after scanning that many posts.
+MAX_POSTS_PER_SUBREDDIT = None
+
 REQUEST_SLEEP = 1.0
 TIMEOUT = 20
 
@@ -83,10 +95,15 @@ def extract_image_urls_from_post(post_data: dict) -> list:
     return clean
 
 
-# ------------- MAIN -------------
+# ------------- CORE PER-SUBREDDIT LOGIC -------------
 
 
-def main():
+def scrape_subreddit(subreddit: str) -> int:
+    print(f"\n[INFO] Scraping r/{subreddit} ...")
+
+    # Each subreddit goes to its own folder
+    out_dir = os.path.join(OUTPUT_ROOT_DIR, subreddit)
+
     session = requests.Session()
     session.headers.update({
         "User-Agent": "script:cursedimages_downloader:v1.1 (by u/yourusername)"
@@ -97,7 +114,8 @@ def main():
     downloaded_count = 0
 
     while True:
-        if scanned_posts >= MAX_POSTS:
+        # Respect MAX_POSTS_PER_SUBREDDIT only if it's not None
+        if MAX_POSTS_PER_SUBREDDIT is not None and scanned_posts >= MAX_POSTS_PER_SUBREDDIT:
             break
 
         params = {"limit": 100}
@@ -105,11 +123,14 @@ def main():
             params["after"] = after
 
         try:
-            resp = session.get(f"https://www.reddit.com/r/{SUBREDDIT}/.json",
-                               params=params, timeout=TIMEOUT)
+            resp = session.get(
+                f"https://www.reddit.com/r/{subreddit}/.json",
+                params=params,
+                timeout=TIMEOUT
+            )
             resp.raise_for_status()
         except Exception as e:
-            print(f"[ERROR] Cannot fetch subreddit listing: {e}")
+            print(f"[ERROR] Cannot fetch subreddit listing for r/{subreddit}: {e}")
             break
 
         data = resp.json()
@@ -126,12 +147,13 @@ def main():
             image_urls = extract_image_urls_from_post(post_data)
 
             for u in image_urls:
-                if download_image(u, OUTPUT_DIR):
+                if download_image(u, out_dir):
                     downloaded_count += 1
                     if downloaded_count % 100 == 0:
-                        print(f"[LOG] Downloaded {downloaded_count} images so far")
+                        print(f"[LOG][r/{subreddit}] Downloaded {downloaded_count} images so far")
 
-            if scanned_posts >= MAX_POSTS:
+            # Again, only check the limit if it's not None
+            if MAX_POSTS_PER_SUBREDDIT is not None and scanned_posts >= MAX_POSTS_PER_SUBREDDIT:
                 break
 
         if not after:
@@ -139,8 +161,29 @@ def main():
 
         time.sleep(REQUEST_SLEEP)
 
-    print(f"[DONE] Total scanned posts: {scanned_posts}")
-    print(f"[DONE] Total images downloaded: {downloaded_count}")
+    print(f"[DONE][r/{subreddit}] Total scanned posts: {scanned_posts}")
+    print(f"[DONE][r/{subreddit}] Total images downloaded from this subreddit: {downloaded_count}")
+
+    # Return the per-subreddit count so main() can aggregate
+    return downloaded_count
+
+
+# ------------- MAIN -------------
+
+
+def main():
+    os.makedirs(OUTPUT_ROOT_DIR, exist_ok=True)
+
+    total_downloaded_all = 0
+
+    for subreddit in SUBREDDITS:
+        downloaded_from_sub = scrape_subreddit(subreddit)
+        total_downloaded_all += downloaded_from_sub
+        print(f"[AGGREGATE] After r/{subreddit}: {total_downloaded_all} total images downloaded across all subreddits so far")
+
+    print("\n==============================")
+    print(f"[GLOBAL DONE] Total images downloaded from all subreddits: {total_downloaded_all}")
+    print("==============================")
 
 
 if __name__ == "__main__":

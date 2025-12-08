@@ -1,5 +1,6 @@
 data_raw_all/
 data_raw_no_text/
+data_raw_rejected/
 data_preprocessed_256/
 pinterest_cursed_images/
 reddit_cursed_images/

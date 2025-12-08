@@ -1,1 +1,1 @@
-# shitpost-gan
+# cursed-gan
